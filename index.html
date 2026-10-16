@@ -727,6 +727,34 @@ article.is-bookmarked {
     display: block !important;
   }
 }
+
+/* ========================================================
+   모바일 하단 버튼 및 단계 탭 터치 먹통 현상 해결 패치
+   ======================================================== */
+
+/* 1. 모바일 더블탭 줌 딜레이 제거 및 즉각 터치 반응 */
+html, body, button, input, select, .controls, .bottom-bar, [class*="stage"], [class*="step"] {
+  touch-action: manipulation;
+}
+
+/* 2. 하단 고정 바/플로팅 단계 버튼 레이어 최상단 우선권 부여 */
+/* 모바일 하단에 붙는 탭 바/버튼 컨테이너의 클래스들이 모두 포함되도록 지정 */
+.controls,
+.mobile-bottom-bar,
+.bottom-nav,
+footer,
+div[style*="position: fixed"][style*="bottom"] {
+  z-index: 99999 !important;
+  pointer-events: auto !important;
+}
+
+/* 3. 모바일 사파리/크롬 동적 툴바 대응 높이 보정 */
+@supports (min-height: 100dvh) {
+  body {
+    min-height: 100dvh;
+  }
+}
+
 </style>
 <meta content="#24634e" name="theme-color"/>
 <meta content="yes" name="apple-mobile-web-app-capable"/>
@@ -7427,7 +7455,7 @@ article.is-bookmarked {
 <strong>⚖️ 내 답안 vs 예시 답안 나란히 비교</strong>
 <div class="compare-layout-btns">
 <button class="ws-btn" data-action="qc-toggle-layout" id="qcLayoutToggleBtn" type="button">좌우 2단 / 상하 전환</button>
-<button class="ws-btn" data-action="qc-toggle-kr" id="qcKrToggleBtn" type="button">2. MD 한국어 발췌 펼치기/접기</button>
+<button class="ws-btn" data-action="qc-toggle-kr" id="qcKrToggleBtn" type="button">한국어 번역본 펼치기/접기</button>
 </div>
 </div>
 <div class="compare-grid" id="qcCompareGrid">
@@ -7451,7 +7479,7 @@ article.is-bookmarked {
 </div>
 <aside class="note" hidden="" id="qcNote"></aside>
 <div class="compare-kr-box" id="qcKrBox">
-<h4 id="qcKrSourceTitle">2. MD 파일에서 해당 내용</h4>
+<h4 id="qcKrSourceTitle">한국어 번역본 파일에서 해당 내용</h4>
 <div class="korean" id="qcKorean"></div>
 </div>
 </div>
