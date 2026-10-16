@@ -8419,9 +8419,9 @@ filter();
     setDoc 
   } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
 
-  // 2. 방금 콘솔에서 확인하신 본인의 설정 키를 여기에 그대로 붙여넣으세요
+  // 2. 본인의 firebaseConfig 설정 키 입력 (기존 값 그대로 넣으세요)
   const firebaseConfig = {
-    apiKey: "AIzaSyB8ERwrEVdwDt2J1_UQ35EEnslfcYC3Lx4",            // 👉 본인 키 입력
+    apiKey: "AIzaSyB8ERwrEVdwDt2J1_UQ35EEnslfcYC3Lx4",            // 👉 본인 키 유지
     authDomain: "the-commanding-heights.firebaseapp.com",
     projectId: "the-commanding-heights",
     storageBucket: "the-commanding-heights.firebasestorage.app",
@@ -8438,12 +8438,21 @@ filter();
   const authBtn = document.getElementById('authBtn');
   const userStatus = document.getElementById('userStatus');
 
+  // [수정] showToast가 없어도 에러 없이 안전하게 실행되는 방어 알림 함수
+  function triggerSafeToast(message) {
+    if (typeof window.showToast === 'function') {
+      window.showToast(message);
+    } else {
+      console.log(message);
+    }
+  }
+
   // 4. 로그인 / 로그아웃 버튼 클릭 이벤트
   if (authBtn) {
     authBtn.addEventListener('click', () => {
       if (currentUser) {
         if (confirm('로그아웃하시겠습니까?')) {
-          signOut(auth);
+          signOut(auth).catch(err => console.error('SignOut error:', err));
         }
       } else {
         const provider = new GoogleAuthProvider();
@@ -8461,28 +8470,34 @@ filter();
     if (user) {
       if (authBtn) authBtn.textContent = '로그아웃';
       if (userStatus) {
-        userStatus.innerHTML = `<b style="color:var(--green);">🟢 ${user.displayName || user.email}</b> 동기화 중`;
+        userStatus.innerHTML = `<b style="color:var(--green, #2e7d32);">🟢 ${user.displayName || user.email}</b> 동기화 중`;
       }
 
       try {
         const userDocRef = doc(db, 'study_records', user.uid);
         const docSnap = await getDoc(userDocRef);
 
+        const currentItems = window.appState ? window.appState.items : (typeof appState !== 'undefined' ? appState.items : null);
+
         if (docSnap.exists() && docSnap.data().items) {
           // 클라우드에 기존 데이터가 있으면 로컬 데이터와 병합
           const cloudItems = docSnap.data().items;
-          appState.items = { ...appState.items, ...cloudItems };
-          saveState();
-          updateDashboardAndCards();
-          filter();
-          showToast('☁️ 구글 계정 학습 데이터를 동기화했습니다.');
+          if (currentItems) {
+            Object.assign(currentItems, cloudItems);
+          }
+          if (typeof window.saveState === 'function') window.saveState();
+          if (typeof window.updateDashboardAndCards === 'function') window.updateDashboardAndCards();
+          if (typeof window.filter === 'function') window.filter();
+          triggerSafeToast('☁️ 구글 계정 학습 데이터를 동기화했습니다.');
         } else {
           // 첫 로그인 시 현재 기기의 답안/진도를 클라우드에 최초 등록
-          await setDoc(userDocRef, {
-            items: appState.items,
-            updatedAt: new Date().toISOString()
-          });
-          showToast('☁️ 현재 기기의 진행 상황이 구글 계정에 저장되었습니다.');
+          if (currentItems) {
+            await setDoc(userDocRef, {
+              items: currentItems,
+              updatedAt: new Date().toISOString()
+            });
+          }
+          triggerSafeToast('☁️ 현재 기기의 진행 상황이 구글 계정에 저장되었습니다.');
         }
       } catch (e) {
         console.error("Firestore 동기화 오류:", e);
@@ -8493,22 +8508,38 @@ filter();
     }
   });
 
-  // 6. 답안 작성, 완료, 북마크 클릭 시 Firestore에도 1초 딜레이로 자동 저장
-  const originalSaveState = saveState;
-  window.saveState = saveState = function() {
-    originalSaveState(); // 기존 로컬 브라우저 저장
+  // 6. [수정] 스코프 충돌 없는 안전한 saveState 가로채기
+  const setupAutoSync = () => {
+    const originalSave = window.saveState;
+    if (typeof originalSave === 'function') {
+      window.saveState = function(...args) {
+        // 기존 브라우저 로컬스토리지 저장 함수 먼저 실행
+        originalSave.apply(this, args);
 
-    if (currentUser) {
-      if (window.cloudSyncTimer) clearTimeout(window.cloudSyncTimer);
-      window.cloudSyncTimer = setTimeout(() => {
-        const userDocRef = doc(db, 'study_records', currentUser.uid);
-        setDoc(userDocRef, {
-          items: appState.items,
-          updatedAt: new Date().toISOString()
-        }, { merge: true }).catch(err => console.warn('Cloud save error:', err));
-      }, 1000);
+        // 로그인된 상태라면 Firestore에 1초 디바운스로 비동기 전송
+        if (currentUser) {
+          const currentItems = window.appState ? window.appState.items : (typeof appState !== 'undefined' ? appState.items : null);
+          if (currentItems) {
+            if (window.cloudSyncTimer) clearTimeout(window.cloudSyncTimer);
+            window.cloudSyncTimer = setTimeout(() => {
+              const userDocRef = doc(db, 'study_records', currentUser.uid);
+              setDoc(userDocRef, {
+                items: currentItems,
+                updatedAt: new Date().toISOString()
+              }, { merge: true }).catch(err => console.warn('Cloud save error:', err));
+            }, 1000);
+          }
+        }
+      };
     }
   };
+
+  // DOM 로드 완료 후 안전하게 연동 바인딩
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupAutoSync);
+  } else {
+    setupAutoSync();
+  }
 </script>
 <!-- 👆 여기까지 붙여넣기 끝 ------------------------------------------------ -->
 
